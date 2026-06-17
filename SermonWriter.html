@@ -1,0 +1,1045 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+<meta name="mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="default"/>
+<meta name="theme-color" content="#1a237e"/>
+<title>SermonWriter</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+:root {
+  --navy:      #1a237e;
+  --navy-dark: #0d1660;
+  --gold:      #c8a94a;
+  --gold-lt:   #f5e9c4;
+  --cream:     #faf8f4;
+  --white:     #ffffff;
+  --ink:       #1c1c2e;
+  --ink-mid:   #4a4a6a;
+  --ink-lt:    #8888aa;
+  --border:    #ddddf0;
+  --red:       #c0392b;
+  --green:     #1a7a4a;
+  --sidebar-w: 280px;
+  --header-h:  54px;
+  --toolbar-h: 46px;
+  --status-h:  34px;
+  font-size:   15px;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+body{
+  font-family: Georgia, 'Times New Roman', serif;
+  background: var(--cream);
+  color: var(--ink);
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  -webkit-text-size-adjust: 100%;
+}
+
+/* ── SIDEBAR ── */
+#sidebar{
+  position:fixed; top:0; left:0;
+  width:var(--sidebar-w); height:100%;
+  background:var(--navy-dark);
+  color:#fff;
+  display:flex; flex-direction:column;
+  transform:translateX(-100%);
+  transition:transform .28s cubic-bezier(.4,0,.2,1);
+  z-index:300;
+  box-shadow:4px 0 24px rgba(0,0,0,.35);
+}
+#sidebar.open{ transform:translateX(0); }
+.sidebar-head{
+  padding:18px 16px 14px;
+  border-bottom:1px solid rgba(255,255,255,.12);
+  background:var(--navy);
+}
+.sidebar-brand{
+  display:flex; align-items:center; gap:8px;
+  font-size:1.15rem; font-weight:700; letter-spacing:.02em;
+}
+.sidebar-brand span.icon{ color:var(--gold); font-size:1.4rem; }
+.sidebar-subtitle{
+  font-size:.72rem; color:rgba(255,255,255,.5);
+  margin-top:3px; letter-spacing:.04em; text-transform:uppercase;
+}
+.sidebar-new{
+  margin:12px 16px;
+  background:var(--gold);
+  color:var(--navy-dark);
+  border:none; border-radius:8px;
+  padding:9px 14px;
+  font-family:inherit; font-size:.88rem; font-weight:700;
+  cursor:pointer; width:calc(100% - 32px);
+  display:flex; align-items:center; gap:7px;
+  transition:background .15s;
+}
+.sidebar-new:hover{ background:#d4b55a; }
+.sermon-list{
+  flex:1; overflow-y:auto;
+  padding:4px 0 16px;
+}
+.sermon-list::-webkit-scrollbar{ width:4px; }
+.sermon-list::-webkit-scrollbar-thumb{ background:rgba(255,255,255,.2); border-radius:2px; }
+.sermon-item{
+  padding:11px 16px;
+  cursor:pointer;
+  border-bottom:1px solid rgba(255,255,255,.07);
+  transition:background .12s;
+  position:relative;
+}
+.sermon-item:hover{ background:rgba(255,255,255,.08); }
+.sermon-item.active{ background:rgba(200,169,74,.18); border-left:3px solid var(--gold); }
+.sermon-item .si-title{
+  font-size:.88rem; font-weight:600; color:#fff;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  max-width:200px;
+}
+.sermon-item .si-meta{
+  font-size:.72rem; color:rgba(255,255,255,.45);
+  margin-top:3px;
+}
+.sermon-item .si-del{
+  position:absolute; right:10px; top:50%; transform:translateY(-50%);
+  background:none; border:none; color:rgba(255,255,255,.3);
+  font-size:1rem; cursor:pointer; padding:4px 6px;
+  line-height:1; border-radius:4px;
+  transition:color .12s, background .12s;
+}
+.sermon-item .si-del:hover{ color:#e74c3c; background:rgba(255,255,255,.08); }
+.empty-list{
+  padding:24px 16px;
+  color:rgba(255,255,255,.35);
+  font-size:.82rem;
+  text-align:center;
+  line-height:1.6;
+}
+
+/* ── OVERLAY ── */
+#sidebarOverlay{
+  display:none; position:fixed; inset:0;
+  background:rgba(0,0,0,.45); z-index:290;
+}
+#sidebarOverlay.open{ display:block; }
+
+/* ── APP HEADER ── */
+.app-header{
+  height:var(--header-h);
+  background:var(--navy);
+  color:#fff;
+  display:flex; align-items:center;
+  padding:0 12px;
+  gap:10px;
+  flex-shrink:0;
+  box-shadow:0 2px 8px rgba(0,0,0,.25);
+  z-index:200;
+}
+.btn-menu{
+  background:none; border:none; color:#fff;
+  font-size:1.45rem; cursor:pointer;
+  padding:6px; border-radius:6px;
+  line-height:1; flex-shrink:0;
+  transition:background .12s;
+}
+.btn-menu:hover{ background:rgba(255,255,255,.12); }
+.header-brand{
+  display:flex; align-items:center; gap:6px;
+  flex:1;
+}
+.header-brand .cross{ color:var(--gold); font-size:1.1rem; }
+.header-brand .name{ font-size:1rem; font-weight:700; letter-spacing:.01em; }
+#saveIndicator{
+  font-size:.75rem; color:rgba(255,255,255,.5);
+  display:flex; align-items:center; gap:5px;
+  white-space:nowrap;
+}
+#saveIndicator .dot{
+  width:7px; height:7px; border-radius:50%;
+  background:rgba(255,255,255,.25);
+  transition:background .3s;
+}
+#saveIndicator.saving .dot{ background:#f39c12; }
+#saveIndicator.saved .dot{ background:#27ae60; }
+.header-actions{ display:flex; gap:6px; }
+.btn-hdr{
+  background:rgba(255,255,255,.1);
+  border:1px solid rgba(255,255,255,.18);
+  color:#fff; border-radius:7px;
+  padding:6px 11px;
+  font-family:inherit; font-size:.78rem; font-weight:600;
+  cursor:pointer; display:flex; align-items:center; gap:5px;
+  white-space:nowrap;
+  transition:background .12s;
+}
+.btn-hdr:hover{ background:rgba(255,255,255,.2); }
+.btn-hdr.gold{ background:var(--gold); color:var(--navy-dark); border-color:var(--gold); }
+.btn-hdr.gold:hover{ background:#d4b55a; }
+
+/* ── TOOLBAR ── */
+.toolbar-wrap{
+  height:var(--toolbar-h);
+  background:var(--white);
+  border-bottom:1px solid var(--border);
+  overflow-x:auto; overflow-y:hidden;
+  display:flex; align-items:center;
+  flex-shrink:0;
+  padding:0 8px;
+  gap:2px;
+  scrollbar-width:none;
+}
+.toolbar-wrap::-webkit-scrollbar{ display:none; }
+.t-grp{ display:flex; align-items:center; gap:1px; }
+.t-div{
+  width:1px; height:20px;
+  background:var(--border);
+  margin:0 5px;
+  flex-shrink:0;
+}
+.tbtn{
+  background:none; border:1px solid transparent;
+  border-radius:5px; padding:5px 7px;
+  cursor:pointer; display:flex; align-items:center; justify-content:center;
+  color:var(--ink-mid); font-size:.78rem; font-family:inherit;
+  min-width:28px; height:30px;
+  transition:background .1s, border-color .1s, color .1s;
+  white-space:nowrap;
+}
+.tbtn:hover{ background:#f0f0f8; border-color:var(--border); color:var(--navy); }
+.tbtn.active{ background:var(--gold-lt); border-color:var(--gold); color:var(--navy); }
+select.tbtn{ padding:4px 6px; min-width:90px; cursor:pointer; }
+
+/* ── WORKSPACE ── */
+.workspace{
+  flex:1;
+  overflow-y:auto;
+  padding:24px 16px 16px;
+  background:var(--cream);
+}
+.page-sheet{
+  background:var(--white);
+  border:1px solid var(--border);
+  border-radius:8px;
+  max-width:680px;
+  margin:0 auto;
+  padding:28px 32px 40px;
+  box-shadow:0 2px 12px rgba(0,0,0,.07);
+  min-height:calc(100vh - var(--header-h) - var(--toolbar-h) - var(--status-h) - 48px);
+}
+@media(max-width:600px){
+  .workspace{ padding:12px 8px; }
+  .page-sheet{ padding:20px 16px 32px; border-radius:0; }
+}
+
+/* ── META ── */
+.sermon-meta{ margin-bottom:20px; }
+.meta-label{
+  display:block; font-size:.72rem; font-weight:700;
+  text-transform:uppercase; letter-spacing:.08em;
+  color:var(--ink-lt); margin-bottom:4px;
+  font-family:Arial,sans-serif;
+}
+.meta-input{
+  width:100%; border:none; border-bottom:1.5px solid var(--border);
+  padding:6px 2px; font-family:Georgia,serif; font-size:1rem;
+  color:var(--ink); background:transparent; outline:none;
+  transition:border-color .15s;
+}
+.meta-input:focus{ border-bottom-color:var(--navy); }
+.meta-input-title{ font-size:1.55rem; font-weight:700; }
+.meta-row{ margin-bottom:14px; }
+.meta-grid{
+  display:grid; grid-template-columns:1fr 1fr; gap:14px;
+  margin-bottom:14px;
+}
+@media(max-width:480px){ .meta-grid{ grid-template-columns:1fr; } }
+.meta-divider{
+  display:flex; align-items:center; gap:12px;
+  margin:20px 0 16px;
+}
+.meta-divider::before,.meta-divider::after{
+  content:''; flex:1; height:1px; background:var(--border);
+}
+.meta-divider-lbl{
+  font-size:.72rem; text-transform:uppercase; letter-spacing:.1em;
+  color:var(--ink-lt); font-family:Arial,sans-serif;
+}
+
+/* ── EDITOR ── */
+#editor{
+  min-height:320px;
+  outline:none;
+  font-family:Georgia,serif; font-size:1rem;
+  line-height:1.85; color:var(--ink);
+}
+#editor:empty::before{
+  content:attr(data-placeholder);
+  color:var(--ink-lt); pointer-events:none;
+}
+#editor h1{ font-size:1.5rem; margin:1rem 0 .5rem; }
+#editor h2{ font-size:1.25rem; margin:.9rem 0 .4rem; }
+#editor h3{ font-size:1.1rem; margin:.7rem 0 .3rem; }
+#editor blockquote{
+  border-left:3px solid var(--gold);
+  padding-left:14px; margin:12px 0;
+  color:var(--ink-mid); font-style:italic;
+}
+
+/* ── STATUS BAR ── */
+.status-bar{
+  height:var(--status-h);
+  background:var(--white);
+  border-top:1px solid var(--border);
+  display:flex; align-items:center;
+  padding:0 14px; gap:12px;
+  flex-shrink:0;
+}
+.stat{
+  font-size:.72rem; color:var(--ink-lt);
+  font-family:Arial,sans-serif;
+}
+.stat b{ color:var(--ink-mid); font-weight:600; }
+
+/* ── MODAL ── */
+.modal-overlay{
+  position:fixed; inset:0;
+  background:rgba(0,0,0,.5);
+  display:flex; align-items:center; justify-content:center;
+  z-index:500;
+}
+.modal-overlay[hidden]{ display:none; }
+.modal{
+  background:var(--white);
+  border-radius:12px;
+  padding:28px 28px 24px;
+  max-width:360px; width:90%;
+  text-align:center;
+  box-shadow:0 12px 40px rgba(0,0,0,.3);
+}
+.modal-icon{ font-size:2rem; color:var(--gold); margin-bottom:10px; }
+.modal h2{ font-size:1.15rem; margin-bottom:8px; color:var(--navy); }
+.modal p{ font-size:.88rem; color:var(--ink-mid); line-height:1.5; margin-bottom:20px; }
+.modal-btns{ display:flex; gap:10px; justify-content:center; }
+.mbtn{
+  border:none; border-radius:8px;
+  padding:10px 20px; font-family:inherit; font-size:.88rem; font-weight:700;
+  cursor:pointer; transition:opacity .15s;
+}
+.mbtn:hover{ opacity:.85; }
+.mbtn-cancel{ background:var(--border); color:var(--ink-mid); }
+.mbtn-confirm{ background:var(--red); color:#fff; }
+</style>
+</head>
+<body>
+
+<!-- SIDEBAR -->
+<div id="sidebarOverlay"></div>
+<nav id="sidebar">
+  <div class="sidebar-head">
+    <div class="sidebar-brand">
+      <span class="icon">✝</span>
+      SermonWriter
+    </div>
+    <div class="sidebar-subtitle">Mis Sermones</div>
+  </div>
+  <button class="sidebar-new" id="btnSidebarNew">
+    <span>＋</span> Nuevo sermón
+  </button>
+  <div class="sermon-list" id="sermonList"></div>
+</nav>
+
+<!-- HEADER -->
+<header class="app-header">
+  <button class="btn-menu" id="btnMenu" title="Mis sermones" aria-label="Abrir lista de sermones">☰</button>
+  <div class="header-brand">
+    <span class="cross">✝</span>
+    <span class="name">SermonWriter</span>
+  </div>
+  <span id="saveIndicator"><span class="dot"></span><span id="saveTxt">Guardado</span></span>
+  <div class="header-actions">
+    <button class="btn-hdr gold" id="btnPDF" title="Descargar PDF">⬇ PDF</button>
+    <button class="btn-hdr" id="btnPrint" title="Imprimir">🖨</button>
+  </div>
+</header>
+
+<!-- TOOLBAR -->
+<div class="toolbar-wrap" role="toolbar" aria-label="Formato">
+  <div class="t-grp">
+    <button class="tbtn" data-cmd="undo" title="Deshacer">↩</button>
+    <button class="tbtn" data-cmd="redo" title="Rehacer">↪</button>
+  </div>
+  <div class="t-div"></div>
+  <div class="t-grp">
+    <select class="tbtn" id="fontFamily">
+      <option value="Georgia, serif">Georgia</option>
+      <option value="'Times New Roman', serif">Times New Roman</option>
+      <option value="Arial, sans-serif">Arial</option>
+      <option value="Verdana, sans-serif">Verdana</option>
+    </select>
+    <select class="tbtn" id="fontSize" style="min-width:56px;">
+      <option value="12px">12</option>
+      <option value="14px" selected>14</option>
+      <option value="16px">16</option>
+      <option value="18px">18</option>
+      <option value="20px">20</option>
+      <option value="24px">24</option>
+      <option value="28px">28</option>
+    </select>
+  </div>
+  <div class="t-div"></div>
+  <div class="t-grp">
+    <button class="tbtn" data-cmd="bold" title="Negrita"><b>N</b></button>
+    <button class="tbtn" data-cmd="italic" title="Cursiva"><i>K</i></button>
+    <button class="tbtn" data-cmd="underline" title="Subrayado"><u>S</u></button>
+    <button class="tbtn" data-cmd="strikeThrough" title="Tachado"><s>T</s></button>
+  </div>
+  <div class="t-div"></div>
+  <div class="t-grp">
+    <button class="tbtn" data-cmd="formatBlock" data-val="h1" title="Título H1">H1</button>
+    <button class="tbtn" data-cmd="formatBlock" data-val="h2" title="H2">H2</button>
+    <button class="tbtn" data-cmd="formatBlock" data-val="h3" title="H3">H3</button>
+    <button class="tbtn" data-cmd="formatBlock" data-val="p" title="Párrafo">¶</button>
+  </div>
+  <div class="t-div"></div>
+  <div class="t-grp">
+    <button class="tbtn" data-cmd="insertUnorderedList" title="Lista">• Lista</button>
+    <button class="tbtn" data-cmd="insertOrderedList" title="Numerada">1. Lista</button>
+    <button class="tbtn" data-cmd="formatBlock" data-val="blockquote" title="Cita bíblica">&ldquo;&rdquo;</button>
+  </div>
+  <div class="t-div"></div>
+  <div class="t-grp">
+    <button class="tbtn" data-cmd="justifyLeft" title="Izquierda">⬡L</button>
+    <button class="tbtn" data-cmd="justifyCenter" title="Centrar">⬡C</button>
+    <button class="tbtn" data-cmd="justifyRight" title="Derecha">⬡R</button>
+  </div>
+  <div class="t-div"></div>
+  <div class="t-grp">
+    <label class="tbtn" title="Color de texto" style="cursor:pointer;">
+      A <input type="color" id="textColor" value="#1a1a2e" style="width:0;height:0;opacity:0;position:absolute;"/>
+    </label>
+    <label class="tbtn" title="Resaltar" style="cursor:pointer;">
+      ▌ <input type="color" id="hlColor" value="#fff9c4" style="width:0;height:0;opacity:0;position:absolute;"/>
+    </label>
+  </div>
+</div>
+
+<!-- WORKSPACE -->
+<main class="workspace">
+  <div class="page-sheet" id="pageSheet">
+    <section class="sermon-meta">
+      <div class="meta-row">
+        <label class="meta-label" for="sermonTitle">Título del Sermón</label>
+        <input type="text" id="sermonTitle" class="meta-input meta-input-title" placeholder="Escribe el título..." autocomplete="off"/>
+      </div>
+      <div class="meta-grid">
+        <div>
+          <label class="meta-label" for="sermonTheme">Tema</label>
+          <input type="text" id="sermonTheme" class="meta-input" placeholder="Tema principal..." autocomplete="off"/>
+        </div>
+        <div>
+          <label class="meta-label" for="sermonDate">Fecha</label>
+          <input type="date" id="sermonDate" class="meta-input"/>
+        </div>
+      </div>
+      <div class="meta-row">
+        <label class="meta-label" for="sermonVerse">Texto Bíblico Principal</label>
+        <input type="text" id="sermonVerse" class="meta-input" placeholder="Ej. Juan 3:16 — Porque de tal manera amó Dios al mundo..." autocomplete="off"/>
+      </div>
+      <div class="meta-divider"><span class="meta-divider-lbl">Contenido del Sermón</span></div>
+    </section>
+    <div id="editor" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Contenido del sermón" spellcheck="true" data-placeholder="Comienza a escribir tu sermón aquí..."></div>
+  </div>
+</main>
+
+<!-- STATUS BAR -->
+<footer class="status-bar">
+  <span class="stat">Palabras: <b id="wordCount">0</b></span>
+  <span class="stat">· Caracteres: <b id="charCount">0</b></span>
+  <span class="stat">· Lectura: <b id="readTime">0 min</b></span>
+</footer>
+
+<!-- MODAL CONFIRMAR NUEVO -->
+<div class="modal-overlay" id="modalNew" hidden>
+  <div class="modal">
+    <div class="modal-icon">✝</div>
+    <h2>Nuevo Sermón</h2>
+    <p>¿Deseas guardar el sermón actual y crear uno nuevo?</p>
+    <div class="modal-btns">
+      <button class="mbtn mbtn-cancel" id="modalNewCancel">Cancelar</button>
+      <button class="mbtn mbtn-confirm" id="modalNewConfirm">Sí, crear nuevo</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL CONFIRMAR BORRAR -->
+<div class="modal-overlay" id="modalDel" hidden>
+  <div class="modal">
+    <div class="modal-icon" style="color:#c0392b;">🗑</div>
+    <h2>Eliminar Sermón</h2>
+    <p id="modalDelMsg">¿Eliminar este sermón permanentemente?</p>
+    <div class="modal-btns">
+      <button class="mbtn mbtn-cancel" id="modalDelCancel">Cancelar</button>
+      <button class="mbtn mbtn-confirm" id="modalDelConfirm">Sí, eliminar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+/* ── CONSTANTS ── */
+const DB_KEY       = 'sermonwriter_db_v2';
+const AUTOSAVE_MS  = 1800;
+const WPM          = 130;
+const FLASH_MS     = 2500;
+
+/* ── STATE ── */
+let db            = loadDB();
+let currentId     = null;
+let autosaveTimer = null;
+let flashTimer    = null;
+let pendingDelId  = null;
+
+/* ── DB HELPERS ── */
+function loadDB() {
+  try {
+    const raw = localStorage.getItem(DB_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch(e) { return {}; }
+}
+function saveDB() {
+  try { localStorage.setItem(DB_KEY, JSON.stringify(db)); } catch(e) {}
+}
+function genId() {
+  return 'sw_' + Date.now() + '_' + Math.random().toString(36).slice(2,7);
+}
+
+/* ── REFS ── */
+const $ = id => document.getElementById(id);
+const el = {
+  editor:    $('editor'),
+  title:     $('sermonTitle'),
+  theme:     $('sermonTheme'),
+  date:      $('sermonDate'),
+  verse:     $('sermonVerse'),
+  wc:        $('wordCount'),
+  cc:        $('charCount'),
+  rt:        $('readTime'),
+  saveDot:   document.querySelector('#saveIndicator .dot'),
+  saveTxt:   $('saveTxt'),
+  saveInd:   $('saveIndicator'),
+  sidebar:   $('sidebar'),
+  overlay:   $('sidebarOverlay'),
+  listEl:    $('sermonList'),
+  modalNew:  $('modalNew'),
+  modalDel:  $('modalDel'),
+};
+
+/* ══════════════════════════════════
+   INIT
+══════════════════════════════════ */
+function init() {
+  bindToolbar();
+  bindHeader();
+  bindMeta();
+  bindEditor();
+  bindSidebar();
+  bindModals();
+  renderList();
+
+  const ids = Object.keys(db);
+  if (ids.length > 0) {
+    loadSermon(ids[ids.length - 1]);
+  } else {
+    createNewSermon(true);
+  }
+}
+
+/* ══════════════════════════════════
+   SERMON CRUD
+══════════════════════════════════ */
+function createNewSermon(silent) {
+  const id = genId();
+  const today = new Date().toISOString().split('T')[0];
+  db[id] = {
+    id,
+    title:   '',
+    theme:   '',
+    date:    today,
+    verse:   '',
+    content: '',
+    saved:   new Date().toISOString(),
+  };
+  saveDB();
+  currentId = id;
+  populateFields(db[id]);
+  renderList();
+  el.title.focus();
+  if (!silent) showSaved();
+}
+
+function loadSermon(id) {
+  if (!db[id]) return;
+  currentId = id;
+  populateFields(db[id]);
+  renderList();
+  closeSidebar();
+}
+
+function populateFields(s) {
+  el.title.value    = s.title   || '';
+  el.theme.value    = s.theme   || '';
+  el.date.value     = s.date    || '';
+  el.verse.value    = s.verse   || '';
+  el.editor.innerHTML = s.content || '';
+  updateCounters();
+}
+
+function saveCurrentNow() {
+  if (!currentId) return;
+  db[currentId] = {
+    ...db[currentId],
+    title:   el.title.value,
+    theme:   el.theme.value,
+    date:    el.date.value,
+    verse:   el.verse.value,
+    content: el.editor.innerHTML,
+    saved:   new Date().toISOString(),
+  };
+  saveDB();
+  renderList();
+  showSaved();
+}
+
+function deleteSermon(id) {
+  delete db[id];
+  saveDB();
+  if (currentId === id) {
+    const ids = Object.keys(db);
+    if (ids.length > 0) loadSermon(ids[ids.length - 1]);
+    else createNewSermon(true);
+  }
+  renderList();
+}
+
+/* ══════════════════════════════════
+   SIDEBAR / LIST
+══════════════════════════════════ */
+function renderList() {
+  const ids = Object.keys(db).reverse();
+  if (ids.length === 0) {
+    el.listEl.innerHTML = '<div class="empty-list">No hay sermones guardados.<br>Crea uno nuevo.</div>';
+    return;
+  }
+  el.listEl.innerHTML = ids.map(id => {
+    const s = db[id];
+    const title = s.title || '(Sin título)';
+    const date  = s.date  ? new Date(s.date + 'T12:00').toLocaleDateString('es', {day:'numeric',month:'short',year:'numeric'}) : '';
+    const active = id === currentId ? ' active' : '';
+    return `<div class="sermon-item${active}" data-id="${id}">
+      <div class="si-title">${escHtml(title)}</div>
+      <div class="si-meta">${escHtml(date)}${s.theme ? ' · ' + escHtml(s.theme) : ''}</div>
+      <button class="si-del" data-del="${id}" title="Eliminar">✕</button>
+    </div>`;
+  }).join('');
+
+  el.listEl.querySelectorAll('.sermon-item').forEach(item => {
+    item.addEventListener('click', e => {
+      if (e.target.closest('[data-del]')) return;
+      scheduleAutosave.flush();
+      loadSermon(item.dataset.id);
+    });
+  });
+  el.listEl.querySelectorAll('[data-del]').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      pendingDelId = btn.dataset.del;
+      const t = db[pendingDelId]?.title || '(Sin título)';
+      $('modalDelMsg').textContent = `¿Eliminar "${t}" permanentemente?`;
+      el.modalDel.hidden = false;
+    });
+  });
+}
+
+function openSidebar()  { el.sidebar.classList.add('open');  el.overlay.classList.add('open'); }
+function closeSidebar() { el.sidebar.classList.remove('open'); el.overlay.classList.remove('open'); }
+
+function bindSidebar() {
+  $('btnMenu').addEventListener('click', openSidebar);
+  el.overlay.addEventListener('click', closeSidebar);
+  $('btnSidebarNew').addEventListener('click', () => {
+    closeSidebar();
+    el.modalNew.hidden = false;
+  });
+}
+
+/* ══════════════════════════════════
+   AUTOSAVE
+══════════════════════════════════ */
+scheduleAutosave.timer = null;
+function scheduleAutosave() {
+  clearTimeout(scheduleAutosave.timer);
+  showSaving();
+  scheduleAutosave.timer = setTimeout(saveCurrentNow, AUTOSAVE_MS);
+}
+scheduleAutosave.flush = function() {
+  if (scheduleAutosave.timer) {
+    clearTimeout(scheduleAutosave.timer);
+    saveCurrentNow();
+  }
+};
+
+/* ══════════════════════════════════
+   COUNTERS
+══════════════════════════════════ */
+function updateCounters() {
+  const txt   = el.editor.innerText || '';
+  const words = txt.trim() ? txt.trim().split(/\s+/).length : 0;
+  const chars = txt.replace(/\n/g,'').length;
+  el.wc.textContent = words.toLocaleString('es');
+  el.cc.textContent = chars.toLocaleString('es');
+  el.rt.textContent = Math.ceil(words / WPM) + ' min';
+}
+
+/* ══════════════════════════════════
+   SAVE INDICATOR
+══════════════════════════════════ */
+function showSaving() {
+  clearTimeout(flashTimer);
+  el.saveInd.className = 'saving';
+  el.saveTxt.textContent = 'Guardando…';
+}
+function showSaved() {
+  el.saveInd.className = 'saved';
+  el.saveTxt.textContent = 'Guardado';
+  flashTimer = setTimeout(() => {
+    el.saveInd.className = '';
+    el.saveTxt.textContent = '';
+  }, FLASH_MS);
+}
+
+/* ══════════════════════════════════
+   TOOLBAR
+══════════════════════════════════ */
+function bindToolbar() {
+  document.querySelectorAll('.tbtn[data-cmd]').forEach(btn => {
+    btn.addEventListener('mousedown', e => {
+      e.preventDefault();
+      el.editor.focus();
+      document.execCommand(btn.dataset.cmd, false, btn.dataset.val || null);
+      updateActiveStates();
+      scheduleAutosave();
+    });
+  });
+
+  $('fontFamily').addEventListener('change', () => {
+    el.editor.focus();
+    document.execCommand('fontName', false, $('fontFamily').value);
+    scheduleAutosave();
+  });
+
+  $('fontSize').addEventListener('change', () => {
+    el.editor.focus();
+    document.execCommand('fontSize', false, '7');
+    el.editor.querySelectorAll('font[size="7"]').forEach(f => {
+      f.removeAttribute('size'); f.style.fontSize = $('fontSize').value;
+    });
+    scheduleAutosave();
+  });
+
+  $('textColor').addEventListener('input', () => {
+    el.editor.focus();
+    document.execCommand('foreColor', false, $('textColor').value);
+    scheduleAutosave();
+  });
+
+  $('hlColor').addEventListener('input', () => {
+    el.editor.focus();
+    document.execCommand('hiliteColor', false, $('hlColor').value);
+    scheduleAutosave();
+  });
+
+  document.addEventListener('selectionchange', updateActiveStates);
+}
+
+function updateActiveStates() {
+  ['bold','italic','underline','strikeThrough',
+   'insertUnorderedList','insertOrderedList',
+   'justifyLeft','justifyCenter','justifyRight'].forEach(cmd => {
+    const b = document.querySelector(`.tbtn[data-cmd="${cmd}"]`);
+    if (!b) return;
+    try { b.classList.toggle('active', document.queryCommandState(cmd)); } catch(_){}
+  });
+}
+
+/* ══════════════════════════════════
+   EDITOR EVENTS
+══════════════════════════════════ */
+function bindEditor() {
+  el.editor.addEventListener('input', () => { updateCounters(); scheduleAutosave(); });
+  el.editor.addEventListener('paste', e => {
+    e.preventDefault();
+    const txt = e.clipboardData.getData('text/plain');
+    document.execCommand('insertText', false, txt);
+  });
+  el.editor.addEventListener('keydown', e => {
+    if (e.key === 'Tab') { e.preventDefault(); document.execCommand('insertHTML', false, '&nbsp;&nbsp;&nbsp;&nbsp;'); }
+  });
+}
+
+/* ══════════════════════════════════
+   META INPUTS
+══════════════════════════════════ */
+function bindMeta() {
+  [el.title, el.theme, el.date, el.verse].forEach(f =>
+    f.addEventListener('input', scheduleAutosave)
+  );
+}
+
+/* ══════════════════════════════════
+   HEADER BUTTONS
+══════════════════════════════════ */
+function bindHeader() {
+  $('btnPrint').addEventListener('click', () => window.print());
+  $('btnPDF').addEventListener('click', downloadPDF);
+}
+
+/* ══════════════════════════════════
+   MODALS
+══════════════════════════════════ */
+function bindModals() {
+  $('modalNewCancel').addEventListener('click', () => el.modalNew.hidden = true);
+  $('modalNewConfirm').addEventListener('click', () => {
+    el.modalNew.hidden = true;
+    scheduleAutosave.flush();
+    createNewSermon(false);
+  });
+
+  $('modalDelCancel').addEventListener('click', () => el.modalDel.hidden = true);
+  $('modalDelConfirm').addEventListener('click', () => {
+    el.modalDel.hidden = true;
+    if (pendingDelId) { deleteSermon(pendingDelId); pendingDelId = null; }
+  });
+
+  [el.modalNew, el.modalDel].forEach(m => {
+    m.addEventListener('click', e => { if (e.target === m) m.hidden = true; });
+  });
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+      if (!el.modalNew.hidden) el.modalNew.hidden = true;
+      if (!el.modalDel.hidden) el.modalDel.hidden = true;
+      if (el.sidebar.classList.contains('open')) closeSidebar();
+    }
+  });
+}
+
+/* ══════════════════════════════════
+   PDF DOWNLOAD
+══════════════════════════════════ */
+function downloadPDF() {
+  scheduleAutosave.flush();
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+
+  const PW  = 210, PH = 297;
+  const ML  = 20, MR = 20, MT = 18, MB = 20;
+  const CW  = PW - ML - MR;
+  const LHBASE = 7;
+  let y = MT;
+
+  function checkPage(needed) {
+    if (y + needed > PH - MB) { doc.addPage(); y = MT; }
+  }
+
+  /* Header accent */
+  doc.setFillColor(26, 35, 126);
+  doc.rect(ML, y, CW, 1, 'F');
+  y += 5;
+
+  /* Cross + title block */
+  const title  = el.title.value || 'Sermón sin título';
+  const theme  = el.theme.value;
+  const date   = el.date.value  ? new Date(el.date.value + 'T12:00').toLocaleDateString('es', {weekday:'long',day:'numeric',month:'long',year:'numeric'}) : '';
+  const verse  = el.verse.value;
+
+  doc.setFont('helvetica','bold');
+  doc.setFontSize(20);
+  doc.setTextColor(26, 35, 126);
+  const titleLines = doc.splitTextToSize(title, CW - 10);
+  doc.text(titleLines, ML, y);
+  y += titleLines.length * 8 + 2;
+
+  if (theme) {
+    doc.setFont('helvetica','normal');
+    doc.setFontSize(11);
+    doc.setTextColor(100, 100, 140);
+    doc.text('Tema: ' + theme, ML, y);
+    y += 6;
+  }
+  if (date) {
+    doc.setFont('helvetica','italic');
+    doc.setFontSize(10);
+    doc.setTextColor(130, 130, 160);
+    doc.text(date, ML, y);
+    y += 6;
+  }
+  if (verse) {
+    y += 2;
+    doc.setFillColor(245, 233, 196);
+    doc.setDrawColor(200, 169, 74);
+    const vLines = doc.splitTextToSize(verse, CW - 10);
+    const boxH = vLines.length * 6 + 8;
+    doc.roundedRect(ML, y, CW, boxH, 2, 2, 'FD');
+    doc.setFont('helvetica','italic');
+    doc.setFontSize(10);
+    doc.setTextColor(80, 60, 10);
+    doc.text(vLines, ML + 5, y + 6);
+    y += boxH + 6;
+  }
+
+  /* Divider */
+  y += 2;
+  doc.setDrawColor(200, 169, 74);
+  doc.setLineWidth(0.5);
+  doc.line(ML, y, ML + CW, y);
+  y += 8;
+
+  /* Content: parse editor innerHTML */
+  const tempDiv = document.createElement('div');
+  tempDiv.innerHTML = el.editor.innerHTML;
+
+  function processNode(node) {
+    if (node.nodeType === Node.TEXT_NODE) {
+      const txt = node.textContent;
+      if (!txt.trim()) return;
+      doc.setFont('times','normal');
+      doc.setFontSize(11);
+      doc.setTextColor(28, 28, 46);
+      const lines = doc.splitTextToSize(txt, CW);
+      lines.forEach(line => {
+        checkPage(LHBASE);
+        doc.text(line, ML, y);
+        y += LHBASE;
+      });
+      return;
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE) return;
+    const tag = node.tagName.toUpperCase();
+
+    if (tag === 'H1') {
+      checkPage(14);
+      y += 3;
+      doc.setFont('helvetica','bold');
+      doc.setFontSize(16);
+      doc.setTextColor(26, 35, 126);
+      const ls = doc.splitTextToSize(node.innerText, CW);
+      doc.text(ls, ML, y);
+      y += ls.length * 7 + 3;
+    } else if (tag === 'H2') {
+      checkPage(12);
+      y += 2;
+      doc.setFont('helvetica','bold');
+      doc.setFontSize(13);
+      doc.setTextColor(26, 35, 126);
+      const ls = doc.splitTextToSize(node.innerText, CW);
+      doc.text(ls, ML, y);
+      y += ls.length * 6 + 2;
+    } else if (tag === 'H3') {
+      checkPage(10);
+      doc.setFont('helvetica','bold');
+      doc.setFontSize(11);
+      doc.setTextColor(50, 60, 120);
+      doc.text(doc.splitTextToSize(node.innerText, CW), ML, y);
+      y += 7;
+    } else if (tag === 'BLOCKQUOTE') {
+      const bLines = doc.splitTextToSize(node.innerText, CW - 12);
+      const bH = bLines.length * LHBASE + 6;
+      checkPage(bH);
+      doc.setFillColor(250, 248, 244);
+      doc.setDrawColor(200, 169, 74);
+      doc.setLineWidth(1);
+      doc.line(ML, y, ML, y + bH);
+      doc.setFillColor(250, 248, 244);
+      doc.rect(ML + 1, y, CW - 1, bH, 'F');
+      doc.setFont('times','italic');
+      doc.setFontSize(10.5);
+      doc.setTextColor(80, 80, 100);
+      doc.text(bLines, ML + 8, y + 5);
+      doc.setLineWidth(0.3);
+      y += bH + 4;
+    } else if (tag === 'UL' || tag === 'OL') {
+      let idx = 1;
+      node.querySelectorAll(':scope > li').forEach(li => {
+        const bul = tag === 'UL' ? '•  ' : `${idx++}.  `;
+        const ltxt = li.innerText;
+        const ls = doc.splitTextToSize(bul + ltxt, CW - 6);
+        checkPage(ls.length * LHBASE + 2);
+        doc.setFont('times','normal');
+        doc.setFontSize(11);
+        doc.setTextColor(28,28,46);
+        doc.text(ls, ML + 4, y);
+        y += ls.length * LHBASE + 1;
+      });
+      y += 2;
+    } else if (tag === 'BR') {
+      y += LHBASE * 0.5;
+    } else if (tag === 'P' || tag === 'DIV') {
+      const txt = node.innerText;
+      if (txt.trim()) {
+        doc.setFont('times','normal');
+        doc.setFontSize(11);
+        doc.setTextColor(28,28,46);
+        const ls = doc.splitTextToSize(txt, CW);
+        ls.forEach(line => { checkPage(LHBASE); doc.text(line, ML, y); y += LHBASE; });
+      }
+      y += 2;
+    } else {
+      node.childNodes.forEach(processNode);
+    }
+  }
+
+  tempDiv.childNodes.forEach(processNode);
+
+  /* Footer on each page */
+  const pages = doc.internal.getNumberOfPages();
+  for (let i = 1; i <= pages; i++) {
+    doc.setPage(i);
+    doc.setFont('helvetica','normal');
+    doc.setFontSize(8);
+    doc.setTextColor(160,160,180);
+    doc.text('SermonWriter  ·  ' + (el.title.value || 'Sermón'), ML, PH - 8);
+    doc.text(`Página ${i} de ${pages}`, PW - MR, PH - 8, { align: 'right' });
+  }
+
+  const safeName = (el.title.value || 'sermon').replace(/[^a-zA-Z0-9À-ÿ\s_-]/g,'').trim().replace(/\s+/g,'_') || 'sermon';
+  doc.save(safeName + '.pdf');
+}
+
+/* ══════════════════════════════════
+   UTILS
+══════════════════════════════════ */
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+/* ══════════════════════════════════
+   BOOT
+══════════════════════════════════ */
+document.addEventListener('DOMContentLoaded', init);
+</script>
+
+<!-- PRINT STYLES -->
+<style media="print">
+  .app-header,.toolbar-wrap,.status-bar,#sidebar,#sidebarOverlay,.modal-overlay{display:none!important;}
+  body{overflow:visible!important;height:auto!important;}
+  .workspace{overflow:visible!important; padding:0!important;}
+  .page-sheet{box-shadow:none!important; border:none!important; max-width:none!important; padding:0!important;}
+</style>
+</body>
+</html>
