@@ -9,7 +9,8 @@
   <meta name="theme-color" content="#1a237e" />
   <title>SermonWriter</title>
   <link rel="manifest" href="manifest.json" />
-  <!-- jsPDF incluido localmente para offline -->
+  <link rel="apple-touch-icon" href="icon-192.png" />
+  <!-- jsPDF -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <style>
     /* ── Reset y variables ── */
@@ -278,6 +279,9 @@
     #saveIndicator.saved .dot {
       background: #27ae60;
     }
+    #saveIndicator.synced .dot {
+      background: #2980d9;
+    }
     .header-actions {
       display: flex;
       gap: 6px;
@@ -463,6 +467,22 @@
     .meta-input-title {
       font-size: 1.55rem;
       font-weight: 700;
+      line-height: 1.25;
+      resize: none;
+      overflow: hidden;
+      display: block;
+      font-family: Georgia, serif;
+      white-space: pre-wrap;
+      word-break: break-word;
+      min-height: 1.6em;
+    }
+    /* Cuando el título es largo, baja de tamaño automáticamente
+       (se controla además por JS añadiendo estas clases) */
+    .meta-input-title.title-md {
+      font-size: 1.3rem;
+    }
+    .meta-input-title.title-sm {
+      font-size: 1.1rem;
     }
     .meta-row {
       margin-bottom: 14px;
@@ -509,6 +529,8 @@
       color: var(--ink);
       -webkit-user-select: text;
       user-select: text;
+      overflow-wrap: break-word;
+      word-break: break-word;
     }
     #editor:empty::before {
       content: attr(data-placeholder);
@@ -518,14 +540,17 @@
     #editor h1 {
       font-size: 1.5rem;
       margin: 1rem 0 .5rem;
+      overflow-wrap: break-word;
     }
     #editor h2 {
       font-size: 1.25rem;
       margin: .9rem 0 .4rem;
+      overflow-wrap: break-word;
     }
     #editor h3 {
       font-size: 1.1rem;
       margin: .7rem 0 .3rem;
+      overflow-wrap: break-word;
     }
     #editor blockquote {
       border-left: 3px solid var(--gold);
@@ -641,7 +666,8 @@
       .status-bar,
       #sidebar,
       #sidebarOverlay,
-      .modal-overlay {
+      .modal-overlay,
+      .install-banner {
         display: none !important;
       }
       body {
@@ -716,7 +742,7 @@
 
   <!-- INSTALL BANNER -->
   <div class="install-banner" id="installBanner">
-    📱 Instalar SermonWriter para usar sin conexión
+    📱 Instalar SermonWriter en tu teléfono — toca aquí
   </div>
 
   <!-- SIDEBAR -->
@@ -818,7 +844,7 @@
       <section class="sermon-meta">
         <div class="meta-row">
           <label class="meta-label" for="sermonTitle">Título del Sermón</label>
-          <input type="text" id="sermonTitle" class="meta-input meta-input-title" placeholder="Escribe el título..." autocomplete="off" />
+          <textarea id="sermonTitle" class="meta-input meta-input-title" placeholder="Escribe el título..." autocomplete="off" rows="1"></textarea>
         </div>
         <div class="meta-grid">
           <div>
@@ -872,6 +898,80 @@
     </div>
   </div>
 
+  <!-- ══════════════════════════════════
+       FIREBASE (módulo ES, vía CDN)
+  ══════════════════════════════════ -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+    import {
+      getAuth, signInAnonymously, onAuthStateChanged
+    } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+    import {
+      getDatabase, ref, set, get, remove
+    } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyBh8EQkCwQceD8PdBnP2wWGyOnFOvQOO4I",
+      authDomain: "sermon-2a9c1.firebaseapp.com",
+      databaseURL: "https://sermon-2a9c1-default-rtdb.firebaseio.com",
+      projectId: "sermon-2a9c1",
+      storageBucket: "sermon-2a9c1.firebasestorage.app",
+      messagingSenderId: "601099837807",
+      appId: "1:601099837807:web:60d01957323b947814c89a"
+    };
+
+    const fbApp = initializeApp(firebaseConfig);
+    const auth = getAuth(fbApp);
+    const rtdb = getDatabase(fbApp);
+
+    // Expone un puente sencillo para que el script principal (no-módulo)
+    // pueda hablar con Firebase sin reescribir toda la app a módulos.
+    window.SWFirebase = {
+      ready: false,
+      uid: null,
+      async saveSermon(uid, sermon) {
+        try {
+          await set(ref(rtdb, 'sermons/' + uid + '/' + sermon.id), sermon);
+          return true;
+        } catch (e) {
+          console.warn('Firebase: no se pudo guardar', e);
+          return false;
+        }
+      },
+      async deleteSermon(uid, id) {
+        try {
+          await remove(ref(rtdb, 'sermons/' + uid + '/' + id));
+          return true;
+        } catch (e) {
+          console.warn('Firebase: no se pudo eliminar', e);
+          return false;
+        }
+      },
+      async fetchAll(uid) {
+        try {
+          const snap = await get(ref(rtdb, 'sermons/' + uid));
+          return snap.exists() ? snap.val() : {};
+        } catch (e) {
+          console.warn('Firebase: no se pudo leer', e);
+          return null; // null = error de lectura (distinto de {} = vacío)
+        }
+      }
+    };
+
+    onAuthStateChanged(auth, (user) => {
+      if (user) {
+        window.SWFirebase.uid = user.uid;
+        window.SWFirebase.ready = true;
+        window.dispatchEvent(new CustomEvent('sw-firebase-ready'));
+      }
+    });
+
+    signInAnonymously(auth).catch((e) => {
+      console.warn('Firebase Auth anónimo no disponible:', e.message);
+      window.dispatchEvent(new CustomEvent('sw-firebase-unavailable'));
+    });
+  </script>
+
   <script>
     'use strict';
 
@@ -880,6 +980,8 @@
     const AUTOSAVE_MS = 1800;
     const WPM = 130;
     const FLASH_MS = 2500;
+    const TITLE_MD_LEN = 40;   // a partir de aquí baja un escalón el tamaño
+    const TITLE_SM_LEN = 80;   // a partir de aquí baja otro escalón
 
     /* ── STATE ── */
     let db = loadDB();
@@ -887,8 +989,9 @@
     let autosaveTimer = null;
     let flashTimer = null;
     let pendingDelId = null;
+    let cloudEnabled = false; // true cuando Firebase Auth está lista
 
-    /* ── DB HELPERS ── */
+    /* ── DB HELPERS (caché local, siempre disponible offline) ── */
     function loadDB() {
       try {
         const raw = localStorage.getItem(DB_KEY);
@@ -937,15 +1040,21 @@
       bindEditor();
       bindSidebar();
       bindModals();
+      bindTitleAutoGrow();
       renderList();
 
-      // Detectar offline
       updateOfflineStatus();
       window.addEventListener('online', updateOfflineStatus);
       window.addEventListener('offline', updateOfflineStatus);
 
-      // PWA Install
       bindInstall();
+
+      // Firebase: cuando el inicio de sesión anónimo esté listo, traemos
+      // la nube y la fusionamos con lo que ya hay en este teléfono.
+      window.addEventListener('sw-firebase-ready', onCloudReady);
+      window.addEventListener('sw-firebase-unavailable', () => {
+        cloudEnabled = false;
+      });
 
       const ids = Object.keys(db);
       if (ids.length > 0) {
@@ -983,12 +1092,63 @@
             el.installBanner.classList.remove('show');
           }
           deferredPrompt = null;
+        } else {
+          // iOS Safari no dispara beforeinstallprompt: mostramos instrucciones.
+          alert('Para instalar en iPhone: toca el botón Compartir ⬆️ y luego "Agregar a pantalla de inicio".');
         }
       });
 
       window.addEventListener('appinstalled', () => {
         el.installBanner.classList.remove('show');
       });
+    }
+
+    /* ══════════════════════════════════
+       FIREBASE SYNC
+    ══════════════════════════════════ */
+    async function onCloudReady() {
+      cloudEnabled = true;
+      if (!navigator.onLine) return; // ya cargamos local; sincronizará al volver la señal
+
+      const uid = window.SWFirebase.uid;
+      const remote = await window.SWFirebase.fetchAll(uid);
+      if (remote === null) return; // error de lectura: seguimos con lo local
+
+      // Fusión simple: gana el registro con fecha "saved" más reciente.
+      let changed = false;
+      Object.keys(remote).forEach(id => {
+        const r = remote[id];
+        const l = db[id];
+        if (!l || new Date(r.saved) > new Date(l.saved)) {
+          db[id] = r;
+          changed = true;
+        }
+      });
+      // Sube a la nube cualquier sermón local que la nube no tenga aún.
+      Object.keys(db).forEach(id => {
+        if (!remote[id]) {
+          window.SWFirebase.saveSermon(uid, db[id]);
+        }
+      });
+
+      if (changed) {
+        saveDB();
+        renderList();
+        if (currentId && db[currentId]) populateFields(db[currentId]);
+      }
+      showSynced();
+    }
+
+    function cloudSave(sermon) {
+      if (!cloudEnabled || !navigator.onLine || !window.SWFirebase) return;
+      window.SWFirebase.saveSermon(window.SWFirebase.uid, sermon).then(ok => {
+        if (ok) showSynced();
+      });
+    }
+
+    function cloudDelete(id) {
+      if (!cloudEnabled || !navigator.onLine || !window.SWFirebase) return;
+      window.SWFirebase.deleteSermon(window.SWFirebase.uid, id);
     }
 
     /* ══════════════════════════════════
@@ -1029,11 +1189,12 @@
       el.verse.value = s.verse || '';
       el.editor.innerHTML = s.content || '';
       updateCounters();
+      autoGrowTitle();
     }
 
     function saveCurrentNow() {
       if (!currentId) return;
-      db[currentId] = {
+      const sermon = {
         ...db[currentId],
         title: el.title.value,
         theme: el.theme.value,
@@ -1042,14 +1203,17 @@
         content: el.editor.innerHTML,
         saved: new Date().toISOString(),
       };
+      db[currentId] = sermon;
       saveDB();
       renderList();
       showSaved();
+      cloudSave(sermon);
     }
 
     function deleteSermon(id) {
       delete db[id];
       saveDB();
+      cloudDelete(id);
       if (currentId === id) {
         const ids = Object.keys(db);
         if (ids.length > 0) loadSermon(ids[ids.length - 1]);
@@ -1074,7 +1238,7 @@
             year: 'numeric' }) : '';
         const active = id === currentId ? ' active' : '';
         return `<div class="sermon-item${active}" data-id="${id}">
-          <div class="si-title">${escHtml(title)}</div>
+          <div class="si-title" title="${escHtml(title)}">${escHtml(title)}</div>
           <div class="si-meta">${escHtml(date)}${s.theme ? ' · ' + escHtml(s.theme) : ''}</div>
           <button class="si-del" data-del="${id}" title="Eliminar">✕</button>
         </div>`;
@@ -1143,7 +1307,42 @@
     }
 
     /* ══════════════════════════════════
-       SAVE INDICATOR
+       TÍTULO: auto-crecimiento + reducción de tamaño
+       cuando el texto es muy largo, para que todo el
+       diseño (input, lista lateral, PDF) se acomode bien.
+    ══════════════════════════════════ */
+    function autoGrowTitle() {
+      const t = el.title;
+      t.style.height = 'auto';
+      t.style.height = t.scrollHeight + 'px';
+
+      const len = t.value.length;
+      t.classList.remove('title-md', 'title-sm');
+      if (len > TITLE_SM_LEN) {
+        t.classList.add('title-sm');
+      } else if (len > TITLE_MD_LEN) {
+        t.classList.add('title-md');
+      }
+      // Recalcula altura otra vez por si el cambio de tamaño de fuente
+      // modificó el número de líneas necesarias.
+      t.style.height = 'auto';
+      t.style.height = t.scrollHeight + 'px';
+    }
+
+    function bindTitleAutoGrow() {
+      el.title.addEventListener('input', autoGrowTitle);
+      window.addEventListener('resize', autoGrowTitle);
+      // Enter no debe insertar salto de línea en el título.
+      el.title.addEventListener('keydown', e => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          el.theme.focus();
+        }
+      });
+    }
+
+    /* ══════════════════════════════════
+       SAVE / SYNC INDICATOR
     ══════════════════════════════════ */
     function showSaving() {
       clearTimeout(flashTimer);
@@ -1154,6 +1353,16 @@
     function showSaved() {
       el.saveInd.className = 'saved';
       el.saveTxt.textContent = 'Guardado';
+      flashTimer = setTimeout(() => {
+        el.saveInd.className = '';
+        el.saveTxt.textContent = '';
+      }, FLASH_MS);
+    }
+
+    function showSynced() {
+      clearTimeout(flashTimer);
+      el.saveInd.className = 'synced';
+      el.saveTxt.textContent = 'Sincronizado ☁';
       flashTimer = setTimeout(() => {
         el.saveInd.className = '';
         el.saveTxt.textContent = '';
@@ -1204,7 +1413,6 @@
         scheduleAutosave();
       });
 
-      // Botón resaltar: aplica el color actual
       $('btnHighlight').addEventListener('click', () => {
         el.editor.focus();
         const color = $('hlColor').value || '#fff9c4';
@@ -1326,12 +1534,18 @@
           day: 'numeric', month: 'long', year: 'numeric' }) : '';
       const verse = el.verse.value;
 
+      // El tamaño de letra del título baja automáticamente si es muy largo,
+      // así que todo el bloque (y por tanto el resto del documento) se acomoda.
+      let titleSize = 20;
+      if (title.length > TITLE_SM_LEN) titleSize = 15;
+      else if (title.length > TITLE_MD_LEN) titleSize = 17;
+
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(20);
+      doc.setFontSize(titleSize);
       doc.setTextColor(26, 35, 126);
       const titleLines = doc.splitTextToSize(title, CW - 10);
       doc.text(titleLines, ML, y);
-      y += titleLines.length * 8 + 2;
+      y += titleLines.length * (titleSize * 0.42) + 2;
 
       if (theme) {
         doc.setFont('helvetica', 'normal');
@@ -1501,12 +1715,5 @@
     }
   </script>
 
-  <style media="print">
-    #editor .highlight {
-      background-color: #fff9c4 !important;
-      -webkit-print-color-adjust: exact !important;
-      print-color-adjust: exact !important;
-    }
-  </style>
 </body>
 </html>

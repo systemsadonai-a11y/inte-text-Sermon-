@@ -1,62 +1,51 @@
-// Service Worker para SermonWriter - Offline completo
+'use strict';
 
+// Sube este número cada vez que cambies index.html para forzar
+// a los teléfonos a descargar la versión nueva.
 const CACHE_NAME = 'sermonwriter-v1';
-const ASSETS = [
+
+const CORE_ASSETS = [
   './',
   './index.html',
   './manifest.json',
-  './sw.js',
+  './icon-192.png',
+  './icon-512.png',
   'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'
 ];
 
-// Instalación: cachear recursos
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then((cache) => {
-        console.log('📦 Cacheando recursos...');
-        return cache.addAll(ASSETS);
-      })
-      .then(() => self.skipWaiting())
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(CORE_ASSETS))
   );
+  self.skipWaiting();
 });
 
-// Activación: limpiar caches viejos
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((keys) => {
-      return Promise.all(
-        keys.filter(key => key !== CACHE_NAME)
-          .map(key => caches.delete(key))
-      );
-    }).then(() => self.clients.claim())
+    caches.keys().then((keys) =>
+      Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
+    )
   );
+  self.clients.claim();
 });
 
-// Interceptar peticiones: servir desde cache o red
+// Estrategia: red primero (para tener siempre lo último estando online),
+// con respaldo en caché para que la app abra sin conexión.
+// Las llamadas a Firebase (firebaseio.com / googleapis.com) se dejan pasar
+// directo a la red, ya que no tiene sentido cachearlas.
 self.addEventListener('fetch', (event) => {
-  event.respondWith(
-    caches.match(event.request)
-      .then((cached) => {
-        // Si está en cache, devolverlo
-        if (cached) {
-          return cached;
-        }
+  const url = event.request.url;
+  if (url.includes('firebaseio.com') || url.includes('googleapis.com') || url.includes('gstatic.com/firebasejs')) {
+    return; // deja pasar sin interceptar
+  }
 
-        // Si no, ir a la red
-        return fetch(event.request)
-          .then((response) => {
-            // Guardar en cache para futuras visitas
-            const responseClone = response.clone();
-            caches.open(CACHE_NAME).then((cache) => {
-              cache.put(event.request, responseClone);
-            });
-            return response;
-          })
-          .catch(() => {
-            // Si falla la red y no hay cache, mostrar página offline
-            return caches.match('./index.html');
-          });
+  event.respondWith(
+    fetch(event.request)
+      .then((res) => {
+        const resClone = res.clone();
+        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, resClone));
+        return res;
       })
+      .catch(() => caches.match(event.request))
   );
 });

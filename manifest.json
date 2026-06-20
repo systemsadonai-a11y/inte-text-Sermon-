@@ -1,12 +1,14 @@
 {
   "name": "SermonWriter",
   "short_name": "SermonWriter",
-  "description": "Editor de sermones con formato y PDF",
+  "description": "Escribe, guarda y exporta tus sermones, con sincronización en la nube.",
   "start_url": "./index.html",
+  "scope": "./",
   "display": "standalone",
-  "background_color": "#1a237e",
-  "theme_color": "#1a237e",
   "orientation": "portrait",
+  "background_color": "#faf8f4",
+  "theme_color": "#1a237e",
+  "lang": "es",
   "icons": [
     {
       "src": "icon-192.png",
